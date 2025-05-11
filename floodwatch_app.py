@@ -14,6 +14,7 @@ import io
 import requests
 import zipfile
 import os
+import base64
 
 # === Configuration ===
 BASE_DIR = Path("data")
@@ -156,7 +157,7 @@ ELEVATION_THRESHOLD = threshold_placeholder.slider(
     "Elevation Threshold (meters)",
     min_value=min_elevation,
     max_value=max_elevation,
-    value=1550.0,
+    value=1600.0,
     step=1.0
 )
 
@@ -208,11 +209,16 @@ try:
     img.save(img_buffer, format='PNG')
     img_buffer.seek(0)
 
+    # Convert image to base64 for Folium
+    img_data = img_buffer.getvalue()
+    img_base64 = base64.b64encode(img_data).decode('utf-8')
+    img_url = f"data:image/png;base64,{img_base64}"
+
     map_center = [(sw[0] + ne[0]) / 2, (sw[1] + ne[1]) / 2]
     m = folium.Map(location=map_center, zoom_start=10, tiles='CartoDB positron')
 
     folium.raster_layers.ImageOverlay(
-        image=img_buffer,
+        image=img_url,
         bounds=[sw, ne],
         opacity=0.6,
         interactive=True,
