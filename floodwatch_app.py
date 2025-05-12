@@ -8,8 +8,6 @@ from pathlib import Path
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-from folium import MacroElement
-from jinja2 import Template
 from rasterio.warp import transform_bounds
 from PIL import Image
 import io
@@ -267,64 +265,58 @@ try:
     ).add_to(m)
 
     # Add hover functionality with JavaScript
-    class HoverTooltip(MacroElement):
-        _template = Template("""
-            {% macro script(this, kwargs) %}
-                console.log('HoverTooltip initialized');
-                var flood_mask = new Image();
-                flood_mask.src = "{{ flood_mask_url }}";
-                var sw = {{ sw|tojson }};
-                var ne = {{ ne|tojson }};
-                if (!sw || !ne) {
+    hover_js = f"""
+    <script>
+        function addHoverTooltip(map) {{
+            console.log('HoverTooltip initialized');
+            var flood_mask = new Image();
+            flood_mask.src = "{flood_mask_url}";
+            var sw = [{sw[0]}, {sw[1]}];
+            var ne = [{ne[0]}, {ne[1]}];
+            console.log('Bounds: SW=' + JSON.stringify(sw) + ', NE=' + JSON.stringify(ne));
+            var tooltip = L.divIcon({{
+                className: 'tooltip',
+                html: '<div id="tooltip"></div>'
+            }});
+            var tooltip_marker = L.marker([0, 0], {{icon: tooltip}}).addTo(map);
+            tooltip_marker.setOpacity(0);
+
+            map.on('mousemove', function(e) {{
+                if (!sw || !ne) {{
                     console.error('Error: sw or ne is undefined', sw, ne);
                     return;
-                }
-                console.log('Bounds: SW=' + JSON.stringify(sw) + ', NE=' + JSON.stringify(ne));
-                var tooltip = L.divIcon({
-                    className: 'tooltip',
-                    html: '<div id="tooltip"></div>'
-                });
-                var tooltip_marker = L.marker([0, 0], {icon: tooltip}).addTo({{ this._parent.get_name() }});
-                tooltip_marker.setOpacity(0);
-
-                {{ this._parent.get_name() }}.on('mousemove', function(e) {
-                    var map = {{ this._parent.get_name() }};
-                    var x = (e.latlng.lng - sw[0]) / (ne[0] - sw[0]);
-                    var y = (ne[1] - e.latlng.lat) / (ne[1] - sw[1]);
-                    if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
-                        var canvas = document.createElement('canvas');
-                        var ctx = canvas.getContext('2d');
-                        canvas.width = flood_mask.width;
-                        canvas.height = flood_mask.height;
-                        ctx.drawImage(flood_mask, 0, 0);
-                        var pixel_x = Math.floor(x * flood_mask.width);
-                        var pixel_y = Math.floor(y * flood_mask.height);
-                        var pixel_data = ctx.getImageData(pixel_x, pixel_y, 1, 1).data;
-                        var is_flood_prone = pixel_data[0] > 0 ? 'Flood-Prone' : 'Not Flood-Prone';
-                        document.getElementById('tooltip').innerHTML = is_flood_prone;
-                        tooltip_marker.setLatLng(e.latlng);
-                        tooltip_marker.setOpacity(1);
-                        console.log('Hover: x=' + pixel_x + ', y=' + pixel_y + ', status=' + is_flood_prone);
-                    } else {
-                        tooltip_marker.setOpacity(0);
-                    }
-                });
-
-                {{ this._parent.get_name() }}.on('mouseout', function(e) {
+                }}
+                var x = (e.latlng.lng - sw[0]) / (ne[0] - sw[0]);
+                var y = (ne[1] - e.latlng.lat) / (ne[1] - sw[1]);
+                if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {{
+                    var canvas = document.createElement('canvas');
+                    var ctx = canvas.getContext('2d');
+                    canvas.width = flood_mask.width;
+                    canvas.height = flood_mask.height;
+                    ctx.drawImage(flood_mask, 0, 0);
+                    var pixel_x = Math.floor(x * flood_mask.width);
+                    var pixel_y = Math.floor(y * flood_mask.height);
+                    var pixel_data = ctx.getImageData(pixel_x, pixel_y, 1, 1).data;
+                    var is_flood_prone = pixel_data[0] > 0 ? 'Flood-Prone' : 'Not Flood-Prone';
+                    document.getElementById('tooltip').innerHTML = is_flood_prone;
+                    tooltip_marker.setLatLng(e.latlng);
+                    tooltip_marker.setOpacity(1);
+                    console.log('Hover: x=' + pixel_x + ', y=' + pixel_y + ', status=' + is_flood_prone);
+                }} else {{
                     tooltip_marker.setOpacity(0);
-                });
-            {% endmacro %}
-        """)
+                }}
+            }});
 
-        def __init__(self, flood_mask_url, sw, ne):
-            super().__init__()
-            self._name = 'HoverTooltip'
-            self.flood_mask_url = flood_mask_url
-            self.sw = sw
-            self.ne = ne
-
-    # Add hover tooltip to map
-    m.add_child(HoverTooltip(flood_mask_url, sw, ne))
+            map.on('mouseout', function(e) {{
+                tooltip_marker.setOpacity(0);
+            }});
+        }}
+        document.addEventListener('DOMContentLoaded', function() {{
+            addHoverTooltip(map);
+        }});
+    </script>
+    """
+    m.get_root().html.add_child(folium.Element(hover_js))
 
     folium.LayerControl().add_to(m)
 
