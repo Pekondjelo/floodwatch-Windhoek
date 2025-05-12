@@ -149,7 +149,7 @@ try:
     with rasterio.open(DEM_PATH) as src:
         dem_crs = src.crs
         if dem_crs != aoi.crs:
-            st.warning(f"⚠️ CRS mismatch: DEM ({dem_crs}) differs from shapefile ({aoi.crs}). Reprojecting shapefile.")
+            st.warning(f"CRS mismatch: DEM ({dem_crs}) differs from shapefile ({aoi.crs}). Reprojecting shapefile.")
             aoi = aoi.to_crs(dem_crs)
 
         clipped_dem, out_transform = mask(src, [mapping(geom) for geom in aoi.geometry], crop=True, nodata=src.nodata)
@@ -273,6 +273,13 @@ try:
                 console.log('HoverTooltip initialized');
                 var flood_mask = new Image();
                 flood_mask.src = "{{ flood_mask_url }}";
+                var sw = {{ sw|tojson }};
+                var ne = {{ ne|tojson }};
+                if (!sw || !ne) {
+                    console.error('Error: sw or ne is undefined', sw, ne);
+                    return;
+                }
+                console.log('Bounds: SW=' + JSON.stringify(sw) + ', NE=' + JSON.stringify(ne));
                 var tooltip = L.divIcon({
                     className: 'tooltip',
                     html: '<div id="tooltip"></div>'
@@ -282,13 +289,8 @@ try:
 
                 {{ this._parent.get_name() }}.on('mousemove', function(e) {
                     var map = {{ this._parent.get_name() }};
-                    var sw_lat = {{ sw_lat }};
-                    var sw_lng = {{ sw_lng }};
-                    var ne_lat = {{ ne_lat }};
-                    var ne_lng = {{ ne_lng }};
-                    console.log('Bounds: SW=[' + sw_lng + ',' + sw_lat + '], NE=[' + ne_lng + ',' + ne_lat + ']');
-                    var x = (e.latlng.lng - sw_lng) / (ne_lng - sw_lng);
-                    var y = (ne_lat - e.latlng.lat) / (ne_lat - sw_lat);
+                    var x = (e.latlng.lng - sw[0]) / (ne[0] - sw[0]);
+                    var y = (ne[1] - e.latlng.lat) / (ne[1] - sw[1]);
                     if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
                         var canvas = document.createElement('canvas');
                         var ctx = canvas.getContext('2d');
@@ -314,17 +316,15 @@ try:
             {% endmacro %}
         """)
 
-        def __init__(self, flood_mask_url, sw_lat, sw_lng, ne_lat, ne_lng):
+        def __init__(self, flood_mask_url, sw, ne):
             super().__init__()
             self._name = 'HoverTooltip'
             self.flood_mask_url = flood_mask_url
-            self.sw_lat = sw_lat
-            self.sw_lng = sw_lng
-            self.ne_lat = ne_lat
-            self.ne_lng = ne_lng
+            self.sw = sw
+            self.ne = ne
 
     # Add hover tooltip to map
-    m.add_child(HoverTooltip(flood_mask_url, sw[0], sw[1], ne[0], ne[1]))
+    m.add_child(HoverTooltip(flood_mask_url, sw, ne))
 
     folium.LayerControl().add_to(m)
 
