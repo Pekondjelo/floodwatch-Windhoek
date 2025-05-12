@@ -149,7 +149,7 @@ try:
     with rasterio.open(DEM_PATH) as src:
         dem_crs = src.crs
         if dem_crs != aoi.crs:
-            st.warning(f"CRS mismatch: DEM ({dem_crs}) differs from shapefile ({aoi.crs}). Reprojecting shapefile.")
+            st.warning(f"⚠️ CRS mismatch: DEM ({dem_crs}) differs from shapefile ({aoi.crs}). Reprojecting shapefile.")
             aoi = aoi.to_crs(dem_crs)
 
         clipped_dem, out_transform = mask(src, [mapping(geom) for geom in aoi.geometry], crop=True, nodata=src.nodata)
@@ -215,8 +215,8 @@ try:
         crs = flood_raster.crs
 
     bounds_wgs84 = transform_bounds(crs, 'EPSG:4326', *bounds)
-    sw = [bounds_wgs84[1], bounds_wgs84[0]]
-    ne = [bounds_wgs84[3], bounds_wgs84[2]]
+    sw = [bounds_wgs84[1], bounds_wgs84[0]]  # [lng, lat]
+    ne = [bounds_wgs84[3], bounds_wgs84[2]]  # [lng, lat]
 
     # Prepare flood prediction image for visualization
     flood_image = flood_prediction.copy()
@@ -270,6 +270,7 @@ try:
     class HoverTooltip(MacroElement):
         _template = Template("""
             {% macro script(this, kwargs) %}
+                console.log('HoverTooltip initialized');
                 var flood_mask = new Image();
                 flood_mask.src = "{{ flood_mask_url }}";
                 var tooltip = L.divIcon({
@@ -281,11 +282,13 @@ try:
 
                 {{ this._parent.get_name() }}.on('mousemove', function(e) {
                     var map = {{ this._parent.get_name() }};
-                    var bounds = [[{{ sw[0] }}, {{ sw[1] }}], [{{ ne[0] }}, {{ ne[1] }}]];
-                    var map_size = map.getSize();
-                    var map_bounds = map.getBounds();
-                    var x = (e.latlng.lng - bounds[0][1]) / (bounds[1][1] - bounds[0][1]);
-                    var y = (bounds[1][0] - e.latlng.lat) / (bounds[1][0] - bounds[0][0]);
+                    var sw_lat = {{ sw_lat }};
+                    var sw_lng = {{ sw_lng }};
+                    var ne_lat = {{ ne_lat }};
+                    var ne_lng = {{ ne_lng }};
+                    console.log('Bounds: SW=[' + sw_lng + ',' + sw_lat + '], NE=[' + ne_lng + ',' + ne_lat + ']');
+                    var x = (e.latlng.lng - sw_lng) / (ne_lng - sw_lng);
+                    var y = (ne_lat - e.latlng.lat) / (ne_lat - sw_lat);
                     if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
                         var canvas = document.createElement('canvas');
                         var ctx = canvas.getContext('2d');
@@ -299,6 +302,7 @@ try:
                         document.getElementById('tooltip').innerHTML = is_flood_prone;
                         tooltip_marker.setLatLng(e.latlng);
                         tooltip_marker.setOpacity(1);
+                        console.log('Hover: x=' + pixel_x + ', y=' + pixel_y + ', status=' + is_flood_prone);
                     } else {
                         tooltip_marker.setOpacity(0);
                     }
@@ -310,15 +314,17 @@ try:
             {% endmacro %}
         """)
 
-        def __init__(self, flood_mask_url, sw, ne):
+        def __init__(self, flood_mask_url, sw_lat, sw_lng, ne_lat, ne_lng):
             super().__init__()
             self._name = 'HoverTooltip'
             self.flood_mask_url = flood_mask_url
-            self.sw = sw
-            self.ne = ne
+            self.sw_lat = sw_lat
+            self.sw_lng = sw_lng
+            self.ne_lat = ne_lat
+            self.ne_lng = ne_lng
 
     # Add hover tooltip to map
-    m.add_child(HoverTooltip(flood_mask_url, sw, ne))
+    m.add_child(HoverTooltip(flood_mask_url, sw[0], sw[1], ne[0], ne[1]))
 
     folium.LayerControl().add_to(m)
 
