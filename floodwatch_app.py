@@ -39,22 +39,13 @@ st.markdown("""
         h1 {color: #004aad; font-family: 'Noto Sans', sans-serif;}
         .status-success {color: #28a745; font-weight: bold;}
         .status-error {color: #dc3545; font-weight: bold;}
-        #tooltip {
-            position: absolute;
-            background-color: white;
-            border: 1px solid black;
-            padding: 5px;
-            z-index: 1000;
-            pointer-events: none;
-            font-size: 12px;
-        }
     </style>
 """, unsafe_allow_html=True)
 
 # Header
 st.title("🌊 FloodWatch")
 st.markdown("**Predicting Flood Risks for Windhoek**")
-st.markdown("Use the slider to adjust the elevation threshold and visualize flood-prone areas in Windhoek. Hover over the map to check flood risk.")
+st.markdown("Use the slider to adjust the elevation threshold and visualize flood-prone areas in Windhoek.")
 
 # Sidebar for inputs
 with st.sidebar:
@@ -67,7 +58,6 @@ with st.sidebar:
     st.write("- Adjust the elevation threshold to see flood risks.")
     st.write("- Red areas indicate flood-prone zones.")
     st.write("- Blue outline shows the Windhoek urban boundary.")
-    st.write("- Hover over the map to see if a location is flood-prone.")
     st.write("- Data files are downloaded from Google Drive if not local.")
 
 # === STEP 1: Download or use local data files ===
@@ -206,7 +196,7 @@ except Exception as e:
     st.markdown(f'<p class="status-error">Error saving flood prediction map: {str(e)}</p>', unsafe_allow_html=True)
     st.stop()
 
-# === STEP 7: Create interactive Folium map with hover ===
+# === STEP 7: Create interactive Folium map ===
 try:
     with rasterio.open(OUTPUT_PATH) as flood_raster:
         bounds = flood_raster.bounds
@@ -232,16 +222,6 @@ try:
     img_base64 = base64.b64encode(img_data).decode('utf-8')
     img_url = f"data:image/png;base64,{img_base64}"
 
-    # Prepare flood prediction data for hover (binary mask)
-    flood_mask = flood_prediction.copy()
-    flood_mask_buffer = io.BytesIO()
-    flood_mask_img = Image.fromarray(flood_mask * 255, mode='L')  # Convert to 0/255 for JS
-    flood_mask_img.save(flood_mask_buffer, format='PNG')
-    flood_mask_buffer.seek(0)
-    flood_mask_data = flood_mask_buffer.getvalue()
-    flood_mask_base64 = base64.b64encode(flood_mask_data).decode('utf-8')
-    flood_mask_url = f"data:image/png;base64,{flood_mask_base64}"
-
     map_center = [(sw[0] + ne[0]) / 2, (sw[1] + ne[1]) / 2]
     m = folium.Map(location=map_center, zoom_start=10, tiles='CartoDB positron')
 
@@ -264,66 +244,12 @@ try:
         name="Windhoek Urban Boundary"
     ).add_to(m)
 
-    # Add hover functionality with JavaScript
-    hover_js = f"""
-    <script>
-        function addHoverTooltip(map) {{
-            console.log('HoverTooltip initialized');
-            var flood_mask = new Image();
-            flood_mask.src = "{flood_mask_url}";
-            var sw = [{sw[0]}, {sw[1]}];
-            var ne = [{ne[0]}, {ne[1]}];
-            console.log('Bounds: SW=' + JSON.stringify(sw) + ', NE=' + JSON.stringify(ne));
-            var tooltip = L.divIcon({{
-                className: 'tooltip',
-                html: '<div id="tooltip"></div>'
-            }});
-            var tooltip_marker = L.marker([0, 0], {{icon: tooltip}}).addTo(map);
-            tooltip_marker.setOpacity(0);
-
-            map.on('mousemove', function(e) {{
-                if (!sw || !ne) {{
-                    console.error('Error: sw or ne is undefined', sw, ne);
-                    return;
-                }}
-                var x = (e.latlng.lng - sw[0]) / (ne[0] - sw[0]);
-                var y = (ne[1] - e.latlng.lat) / (ne[1] - sw[1]);
-                if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {{
-                    var canvas = document.createElement('canvas');
-                    var ctx = canvas.getContext('2d');
-                    canvas.width = flood_mask.width;
-                    canvas.height = flood_mask.height;
-                    ctx.drawImage(flood_mask, 0, 0);
-                    var pixel_x = Math.floor(x * flood_mask.width);
-                    var pixel_y = Math.floor(y * flood_mask.height);
-                    var pixel_data = ctx.getImageData(pixel_x, pixel_y, 1, 1).data;
-                    var is_flood_prone = pixel_data[0] > 0 ? 'Flood-Prone' : 'Not Flood-Prone';
-                    document.getElementById('tooltip').innerHTML = is_flood_prone;
-                    tooltip_marker.setLatLng(e.latlng);
-                    tooltip_marker.setOpacity(1);
-                    console.log('Hover: x=' + pixel_x + ', y=' + pixel_y + ', status=' + is_flood_prone);
-                }} else {{
-                    tooltip_marker.setOpacity(0);
-                }}
-            }});
-
-            map.on('mouseout', function(e) {{
-                tooltip_marker.setOpacity(0);
-            }});
-        }}
-        document.addEventListener('DOMContentLoaded', function() {{
-            addHoverTooltip(map);
-        }});
-    </script>
-    """
-    m.get_root().html.add_child(folium.Element(hover_js))
-
     folium.LayerControl().add_to(m)
 
-    st.subheader("Interactive Flood Risk Map")
-    st.markdown("Hover over the map to see if a location is flood-prone.")
+    st.subheader("Flood Risk Map")
+    st.markdown("Red areas show flood-prone zones based on the elevation threshold.")
     st_folium(m, width=700, height=500, key="flood_map")
-    st.markdown('<p class="status-success">Interactive flood prediction map displayed</p>', unsafe_allow_html=True)
+    st.markdown('<p class="status-success">Flood prediction map displayed</p>', unsafe_allow_html=True)
 except Exception as e:
-    st.markdown(f'<p class="status-error">Error creating interactive map: {str(e)}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="status-error">Error creating map: {str(e)}</p>', unsafe_allow_html=True)
     st.stop()
